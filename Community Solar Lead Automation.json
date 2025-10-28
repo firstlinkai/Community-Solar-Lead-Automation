@@ -1,0 +1,2116 @@
+{
+  "name": "My workflow 13",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "33882b23-226f-4c82-b0df-8bb462a1bf7b",
+      "name": "Schedule: Daily 9AM Weekdays",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -2736,
+        -480
+      ],
+      "notes": "⏰ TRIGGER: Runs Monday-Friday at 9 AM to fetch new leads from Clay"
+    },
+    {
+      "parameters": {
+        "url": "https://api.clay.com/v1/leads/batch",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "clayApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "new"
+            },
+            {
+              "name": "limit",
+              "value": "50"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$credentials.apiKey}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "33ec970c-d853-4d72-8a25-29fe73022f99",
+      "name": "Fetch New Leads from Clay",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2512,
+        -480
+      ],
+      "notes": "🔍 ENRICHMENT: Fetch leads from Clay API\n\nMOCK RESPONSE FORMAT:\n{\n  \"leads\": [\n    {\n      \"company_name\": \"Springfield School District\",\n      \"domain\": \"springfield.edu\",\n      \"address\": \"123 Main St\",\n      \"city\": \"Springfield\",\n      \"state\": \"IL\",\n      \"zip\": \"62701\",\n      \"type\": \"School\",\n      \"num_locations\": 5,\n      \"square_footage\": null,\n      \"utility_provider\": \"Ameren Illinois\",\n      \"contacts\": [\n        {\n          \"name\": \"John Doe\",\n          \"title\": \"Facilities Director\",\n          \"email\": \"jdoe@springfield.edu\",\n          \"phone\": \"555-1234\"\n        }\n      ]\n    }\n  ]\n}"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split Clay response into individual lead items\nconst clayResponse = $input.first().json;\nconst leads = clayResponse.leads || [];\n\nif (leads.length === 0) {\n  return [{ json: { message: 'No new leads found' } }];\n}\n\nreturn leads.map(lead => ({ json: lead }));"
+      },
+      "id": "c93e1c92-c0c4-471a-aa3c-9cffb1620912",
+      "name": "Split into Individual Leads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2304,
+        -480
+      ],
+      "notes": "🔀 SPLIT: Convert Clay batch response into individual items for processing"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Apply industry-based square footage heuristics if missing\nconst lead = $input.first().json;\n\n// Default square footage by industry type\nconst sqftDefaults = {\n  'School': 50000,\n  'Retail': 15000,\n  'Restaurant': 5000,\n  'Office': 25000,\n  'Municipality': 100000,\n  'Franchise': 10000\n};\n\nlet squareFootage = lead.square_footage;\nlet needsManualReview = false;\n\n// If square footage is missing, apply heuristic\nif (!squareFootage || squareFootage === null || squareFootage === 0) {\n  const baseDefault = sqftDefaults[lead.type] || 20000;\n  const numLocations = lead.num_locations || 1;\n  squareFootage = baseDefault * numLocations;\n  needsManualReview = true;\n}\n\nreturn [{\n  json: {\n    ...lead,\n    square_footage: squareFootage,\n    sqft_source: needsManualReview ? 'heuristic' : 'enrichment',\n    needs_manual_review: needsManualReview\n  }\n}];"
+      },
+      "id": "6f4b9597-9ee4-4159-96f7-a643b241696f",
+      "name": "Apply Square Footage Heuristics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2080,
+        -480
+      ],
+      "notes": "📐 HEURISTICS: Apply industry-based square footage if missing\n\nDefaults per location:\n- School: 50,000 sqft\n- Retail: 15,000 sqft\n- Restaurant: 5,000 sqft\n- Office: 25,000 sqft\n- Municipality: 100,000 sqft\n- Franchise: 10,000 sqft\n\nMultiplies by num_locations and flags for manual review"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "base": {
+          "__rl": true,
+          "value": "appXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Solar CRM"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblUtilityProviders",
+          "mode": "list",
+          "cachedResultName": "Utility Providers"
+        }
+      },
+      "id": "16bda72d-926a-402d-bab5-523f8d61a30a",
+      "name": "Get Eligible Utility Providers",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        -1856,
+        -480
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "m6AhaFH7ZxyeJ8mg",
+          "name": "Airtable Personal Access Token DGTLBase"
+        }
+      },
+      "notes": "✅ VALIDATION: Fetch list of eligible utility providers from Airtable\n\nExpected Airtable fields:\n- Utility Name (text)\n- State (text)\n- All_In_Rate (currency)\n- Status (single select: Active/Inactive)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate utility provider eligibility\nconst lead = $input.first().json;\nconst utilities = $input.last().json;\n\n// Extract eligible utility names\nconst eligibleUtilities = utilities\n  .filter(u => u.Status === 'Active')\n  .map(u => ({\n    name: u['Utility Name'],\n    state: u.State,\n    rate: u.All_In_Rate\n  }));\n\n// Check if lead's utility is eligible\nconst matchedUtility = eligibleUtilities.find(\n  u => u.name.toLowerCase() === lead.utility_provider?.toLowerCase() &&\n       u.state === lead.state\n);\n\nif (!matchedUtility) {\n  return [{\n    json: {\n      ...lead,\n      eligible: false,\n      rejection_reason: `Utility provider \"${lead.utility_provider}\" not eligible in ${lead.state}`,\n      status: 'Rejected'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    ...lead,\n    eligible: true,\n    all_in_rate: matchedUtility.rate,\n    matched_utility: matchedUtility.name\n  }\n}];"
+      },
+      "id": "c484af75-3a7c-470e-abac-6316f4bd6465",
+      "name": "Validate Utility Eligibility",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1632,
+        -480
+      ],
+      "notes": "🔍 FILTER: Check if utility provider is eligible\n\nMatches lead's utility + state against Airtable list\nRejects if not found or inactive"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.eligible }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "05e6ba72-44f9-4a17-adc8-70338e0ecc32",
+      "name": "IF Eligible?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1424,
+        -480
+      ],
+      "notes": "⚡ BRANCH: Route eligible leads to calculation, rejected to Airtable"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "base": {
+          "__rl": true,
+          "value": "appXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Solar CRM"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblUsageFactors",
+          "mode": "list",
+          "cachedResultName": "Usage Factors"
+        }
+      },
+      "id": "9ea063f2-5efa-4a95-a597-dacd234964b5",
+      "name": "Get Usage Intensity Factors",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        -1200,
+        -592
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "m6AhaFH7ZxyeJ8mg",
+          "name": "Airtable Personal Access Token DGTLBase"
+        }
+      },
+      "notes": "📊 LOOKUP: Fetch industry usage intensity factors\n\nExpected Airtable fields:\n- Industry (text)\n- Usage_Intensity_Factor (number) - kWh per sqft per year"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Solar Savings Calculator - Complete Implementation\nconst lead = $input.first().json;\nconst usageFactors = $input.last().json;\n\n// Get usage intensity factor for lead's industry type\nconst industryFactor = usageFactors.find(\n  f => f.Industry.toLowerCase() === lead.type?.toLowerCase()\n);\n\nconst intensity = industryFactor?.Usage_Intensity_Factor || 15; // Default 15 kWh/sqft/year\n\n// Constants from requirements\nconst offsetPercent = 0.93;  // 93% energy offset\nconst customerDiscount = 0.90; // Customer pays 90% of credits\n\n// Inputs\nconst totalSqFt = parseFloat(lead.square_footage) || 0;\nconst allInRate = parseFloat(lead.all_in_rate) || 0.12; // Default $0.12/kWh\n\n// Calculations\nconst kWhUsage = totalSqFt * intensity;\nconst annualEnergyCost = kWhUsage * allInRate;\nconst annualCredits = kWhUsage * offsetPercent;\nconst customerCost = annualCredits * allInRate * customerDiscount;\nconst annualSavings = annualEnergyCost - customerCost;\nconst savingsPercent = (annualSavings / annualEnergyCost) * 100;\n\nreturn [{\n  json: {\n    ...lead,\n    // Calculation inputs\n    usage_intensity_factor: intensity,\n    // Calculation results\n    kwh_usage: Math.round(kWhUsage),\n    annual_energy_cost: Math.round(annualEnergyCost * 100) / 100,\n    annual_credits: Math.round(annualCredits),\n    customer_cost: Math.round(customerCost * 100) / 100,\n    annual_savings: Math.round(annualSavings * 100) / 100,\n    savings_percent: Math.round(savingsPercent * 10) / 10,\n    calculated_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "69204972-8ab0-4d65-8b49-3f7062821ccc",
+      "name": "Calculate Solar Savings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -912,
+        -352
+      ],
+      "notes": "🧮 CALCULATOR: Complete solar savings formulas\n\nFormulas:\n- kWh Usage = SqFt × Intensity Factor\n- Annual Energy Cost = kWh × Rate\n- Annual Credits = kWh × 93%\n- Customer Cost = Credits × Rate × 90%\n- Annual Savings = Energy Cost - Customer Cost\n- Savings % = Savings / Energy Cost × 100"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lead Scoring & Qualification Logic\nconst lead = $input.first().json;\n\nlet score = 0;\nlet qualificationNotes = [];\n\n// Scoring criteria\nif (lead.annual_savings >= 10000) {\n  score += 30;\n  qualificationNotes.push('High savings potential (>$10K)');\n} else if (lead.annual_savings >= 5000) {\n  score += 20;\n  qualificationNotes.push('Medium savings potential ($5K-$10K)');\n} else {\n  score += 10;\n  qualificationNotes.push('Low savings potential (<$5K)');\n}\n\n// Contact availability\nif (lead.contacts && lead.contacts.length > 0) {\n  const hasEmail = lead.contacts.some(c => c.email);\n  const hasPhone = lead.contacts.some(c => c.phone);\n  \n  if (hasEmail) {\n    score += 20;\n    qualificationNotes.push('Email contact available');\n  }\n  if (hasPhone) {\n    score += 20;\n    qualificationNotes.push('Phone contact available');\n  }\n} else {\n  qualificationNotes.push('No contact information');\n}\n\n// Utility eligibility already validated\nscore += 20;\nqualificationNotes.push('Eligible utility provider');\n\n// Manual review flag penalty\nif (lead.needs_manual_review) {\n  score -= 10;\n  qualificationNotes.push('Needs manual review for square footage');\n}\n\n// Qualification threshold: 60+\nconst qualified = score >= 60;\n\nreturn [{\n  json: {\n    ...lead,\n    lead_score: score,\n    qualified: qualified,\n    qualification_notes: qualificationNotes.join('; '),\n    status: qualified ? 'Qualified' : 'Enriched'\n  }\n}];"
+      },
+      "id": "c4b81ed9-39c7-41e2-965c-e140570dea3e",
+      "name": "Score & Qualify Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2528,
+        -32
+      ],
+      "notes": "⭐ SCORING: Lead qualification logic\n\nScoring criteria:\n- Savings >$10K: +30 pts\n- Savings $5K-$10K: +20 pts\n- Email contact: +20 pts\n- Phone contact: +20 pts\n- Eligible utility: +20 pts\n- Manual review needed: -10 pts\n\nQualified threshold: 60+ points"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Solar CRM"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblCompanies",
+          "mode": "list",
+          "cachedResultName": "Companies"
+        },
+        "filterByFormula": "={Domain}='{{ $json.domain }}'",
+        "options": {}
+      },
+      "id": "f902405f-90b5-41ae-aaa8-749ce88d36c4",
+      "name": "Search Existing Company",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        -2320,
+        -32
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "m6AhaFH7ZxyeJ8mg",
+          "name": "Airtable Personal Access Token DGTLBase"
+        }
+      },
+      "notes": "🔍 UPSERT: Check if company already exists in Airtable by domain"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "362d2427-cc43-4c05-8e76-91d986e66cb6",
+      "name": "IF Company Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -2096,
+        -32
+      ],
+      "notes": "⚡ BRANCH: Create new or update existing company record"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Solar CRM"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblCompanies",
+          "mode": "list",
+          "cachedResultName": "Companies"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Company Name": "={{ $json.company_name }}",
+            "Domain": "={{ $json.domain }}",
+            "Address": "={{ $json.address }}",
+            "City": "={{ $json.city }}",
+            "State": "={{ $json.state }}",
+            "Zip": "={{ $json.zip }}",
+            "Type": "={{ $json.type }}",
+            "Num Locations": "={{ $json.num_locations }}",
+            "Total SqFt": "={{ $json.square_footage }}",
+            "SqFt Source": "={{ $json.sqft_source }}",
+            "Needs Manual Review": "={{ $json.needs_manual_review }}",
+            "Utility Provider": "={{ $json.matched_utility }}",
+            "All-In-Rate": "={{ $json.all_in_rate }}",
+            "Usage Intensity Factor": "={{ $json.usage_intensity_factor }}",
+            "kWh Usage": "={{ $json.kwh_usage }}",
+            "Annual Energy Cost": "={{ $json.annual_energy_cost }}",
+            "Annual Credits": "={{ $json.annual_credits }}",
+            "Customer Cost": "={{ $json.customer_cost }}",
+            "Annual Savings": "={{ $json.annual_savings }}",
+            "Savings Percent": "={{ $json.savings_percent }}",
+            "Lead Score": "={{ $json.lead_score }}",
+            "Qualification Notes": "={{ $json.qualification_notes }}",
+            "Status": "={{ $json.status }}",
+            "Last Outreach Date": "",
+            "Calculated At": "={{ $json.calculated_at }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "eaecaeb2-c46c-43cb-b5e4-758671803a1a",
+      "name": "Create Company Record",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        -1872,
+        -128
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "m6AhaFH7ZxyeJ8mg",
+          "name": "Airtable Personal Access Token DGTLBase"
+        }
+      },
+      "notes": "➕ CREATE: New company record in Airtable with all enrichment + calculation data"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Solar CRM"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblCompanies",
+          "mode": "list",
+          "cachedResultName": "Companies"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Total SqFt": "={{ $json.square_footage }}",
+            "SqFt Source": "={{ $json.sqft_source }}",
+            "Needs Manual Review": "={{ $json.needs_manual_review }}",
+            "Utility Provider": "={{ $json.matched_utility }}",
+            "All-In-Rate": "={{ $json.all_in_rate }}",
+            "Usage Intensity Factor": "={{ $json.usage_intensity_factor }}",
+            "kWh Usage": "={{ $json.kwh_usage }}",
+            "Annual Energy Cost": "={{ $json.annual_energy_cost }}",
+            "Annual Credits": "={{ $json.annual_credits }}",
+            "Customer Cost": "={{ $json.customer_cost }}",
+            "Annual Savings": "={{ $json.annual_savings }}",
+            "Savings Percent": "={{ $json.savings_percent }}",
+            "Lead Score": "={{ $json.lead_score }}",
+            "Qualification Notes": "={{ $json.qualification_notes }}",
+            "Status": "={{ $json.status }}",
+            "Calculated At": "={{ $json.calculated_at }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "62b29316-dc36-4196-b229-0ee15da8718f",
+      "name": "Update Company Record",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        -1872,
+        80
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "m6AhaFH7ZxyeJ8mg",
+          "name": "Airtable Personal Access Token DGTLBase"
+        }
+      },
+      "notes": "🔄 UPDATE: Existing company with fresh calculations and enrichment data"
+    },
+    {
+      "parameters": {},
+      "id": "adba3536-a531-4d60-8baa-5d70affaa8ea",
+      "name": "Merge Company Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        -1648,
+        -32
+      ],
+      "notes": "🔗 MERGE: Combine create/update branches"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare contact records for Airtable\nconst lead = $input.first().json;\nconst companyRecord = lead; // Has Airtable record ID\n\nif (!lead.contacts || lead.contacts.length === 0) {\n  return [{ json: { message: 'No contacts to create', company_id: companyRecord.id } }];\n}\n\nreturn lead.contacts.map(contact => ({\n  json: {\n    name: contact.name,\n    title: contact.title,\n    email: contact.email,\n    phone: contact.phone,\n    company_id: companyRecord.id,\n    verified: false,\n    role_tag: contact.title?.toLowerCase().includes('facilities') ? 'Facilities' :\n              contact.title?.toLowerCase().includes('sustainability') ? 'Sustainability' : 'Other'\n  }\n}));"
+      },
+      "id": "3dd76c57-85be-4b8a-806b-fbb332feddae",
+      "name": "Prepare Contact Records",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1424,
+        -32
+      ],
+      "notes": "👥 CONTACTS: Split contacts for individual creation in Airtable"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Solar CRM"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblContacts",
+          "mode": "list",
+          "cachedResultName": "Contacts"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $json.name }}",
+            "Title": "={{ $json.title }}",
+            "Email": "={{ $json.email }}",
+            "Phone": "={{ $json.phone }}",
+            "Company": [
+              "={{ $json.company_id }}"
+            ],
+            "Verified": "={{ $json.verified }}",
+            "Role Tag": "={{ $json.role_tag }}",
+            "Last Contacted": "",
+            "Preferred Contact Method": ""
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "7ff592e4-4de2-4554-9928-defbba3fa3aa",
+      "name": "Create Contact Records",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        -1200,
+        -32
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "m6AhaFH7ZxyeJ8mg",
+          "name": "Airtable Personal Access Token DGTLBase"
+        }
+      },
+      "notes": "👤 CREATE: Individual contact records linked to company"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.qualified }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4595c387-af4b-4254-96eb-0b1618dd3652",
+      "name": "IF Qualified for Outreach?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -848,
+        96
+      ],
+      "notes": "⚡ BRANCH: Only proceed with outreach if lead is qualified (score >= 60)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "prospect_data",
+              "name": "prospect_data",
+              "type": "object",
+              "value": "={{ {\n  company_name: $json.company_name,\n  type: $json.type,\n  city: $json.city,\n  state: $json.state,\n  annual_savings: $json.annual_savings,\n  savings_percent: $json.savings_percent,\n  kwh_usage: $json.kwh_usage,\n  square_footage: $json.square_footage,\n  contact_name: $json.contacts?.[0]?.name || 'there',\n  contact_title: $json.contacts?.[0]?.title || 'decision maker'\n} }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "890900d1-d66e-47e8-9c44-8463c4a44fda",
+      "name": "Prepare Outreach Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2976,
+        352
+      ],
+      "notes": "📦 PREP: Structure data for AI personalization and outreach channels"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$credentials.apiKey}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "gpt-4"
+            },
+            {
+              "name": "messages",
+              "value": "={{ [\n  {\n    role: 'system',\n    content: 'You are a solar energy consultant writing personalized cold outreach emails. Write concise, value-focused emails in plain text format. Focus on specific savings numbers and benefits.'\n  },\n  {\n    role: 'user',\n    content: `Write a personalized cold outreach email for:\n\nCompany: ${$json.prospect_data.company_name}\nType: ${$json.prospect_data.type}\nLocation: ${$json.prospect_data.city}, ${$json.prospect_data.state}\nContact: ${$json.prospect_data.contact_name} (${$json.prospect_data.contact_title})\n\nKey selling points:\n- Annual savings: ${$json.prospect_data.annual_savings.toLocaleString()}\n- Savings percentage: ${$json.prospect_data.savings_percent}%\n- Current energy usage: ${$json.prospect_data.kwh_usage.toLocaleString()} kWh/year\n- Facility size: ${$json.prospect_data.square_footage.toLocaleString()} sqft\n\nWrite a brief, personalized email (150-200 words) that:\n1. References their specific industry/type\n2. Highlights the exact dollar savings\n3. Mentions community solar benefits (no upfront costs, no installation)\n4. Includes a clear call-to-action to schedule a 15-min call\n\nSubject line should be compelling and personalized.\nEmail should be plain text, professional but warm.`\n  }\n] }}"
+            },
+            {
+              "name": "temperature",
+              "value": "0.7"
+            },
+            {
+              "name": "max_tokens",
+              "value": "500"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fe306346-fcd3-4754-9243-c23da5870053",
+      "name": "Generate Personalized Email (OpenAI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2816,
+        352
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "P4NESClX0dBthYz4",
+          "name": "OpenAi account dgtlbase"
+        }
+      },
+      "notes": "🤖 AI: Generate personalized email copy using GPT-4\n\nPrompt includes:\n- Company details and context\n- Specific savings numbers\n- Industry-specific messaging\n- Clear CTA for booking\n\nOutput: Subject + Body (plain text)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract email content from OpenAI response\nconst response = $input.first().json;\nconst emailContent = response.choices?.[0]?.message?.content || '';\n\n// Parse subject and body (assuming format: Subject: ... \\n\\nBody...)\nconst subjectMatch = emailContent.match(/Subject:\\s*(.+?)\\n/i);\nconst subject = subjectMatch ? subjectMatch[1].trim() : 'Exclusive Community Solar Savings for ' + $json.prospect_data.company_name;\n\n// Remove subject line from body\nconst body = emailContent.replace(/Subject:\\s*.+?\\n\\n?/i, '').trim();\n\nreturn [{\n  json: {\n    ...$json,\n    email_subject: subject,\n    email_body: body,\n    email_generated_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "bc74a3a5-cb75-476f-ad16-c68510e48c66",
+      "name": "Parse Email Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2592,
+        352
+      ],
+      "notes": "📝 PARSE: Extract subject line and body from AI-generated email"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.contacts?.[0]?.email }}",
+        "subject": "={{ $json.email_subject }}",
+        "message": "={{ $json.email_body }}",
+        "options": {
+          "replyTo": "sales@communitysolarprovider.com"
+        }
+      },
+      "id": "f6de125b-837b-46a0-8932-feff386faf2c",
+      "name": "Send Email via Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -2384,
+        352
+      ],
+      "webhookId": "95e803b5-f97f-4d9c-b30f-9490e9d375c5",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ftMJ19DZtqaMtMKR",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "📧 SEND: Deliver personalized email via Gmail\n\nSends to primary contact's email\nIncludes reply-to for responses"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Solar CRM"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblCompanies",
+          "mode": "list",
+          "cachedResultName": "Companies"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Contacted",
+            "Last Outreach Date": "={{ $now.toISO() }}",
+            "Email Subject": "={{ $json.email_subject }}",
+            "Email Sent": true
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "c2ca7ac8-cf03-47f9-89a7-cfaa9411d874",
+      "name": "Update Email Status in Airtable",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        -2160,
+        352
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "m6AhaFH7ZxyeJ8mg",
+          "name": "Airtable Personal Access Token DGTLBase"
+        }
+      },
+      "notes": "✅ UPDATE: Mark company as contacted via email with timestamp"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare Vapi voice call script\nconst lead = $input.first().json;\nconst prospect = lead.prospect_data;\n\nconst callScript = `\nHi, this is Sarah from Community Solar Solutions. \n\nI'm calling for ${prospect.contact_name} at ${prospect.company_name}.\n\nI've been researching ${prospect.type.toLowerCase()}s in ${prospect.city}, and I found that you could save approximately ${prospect.annual_savings.toLocaleString()} annually on your energy costs through our community solar program.\n\nThat's about ${prospect.savings_percent}% off your current electricity bill, with zero upfront costs and no rooftop installation needed.\n\nWould you have 15 minutes this week to discuss how this works? I can show you the exact numbers for your ${prospect.square_footage.toLocaleString()} square foot facility.\n\n[PAUSE FOR RESPONSE]\n\nIf interested: Great! I'll send you a calendar link to book a time that works for you.\n\nIf not interested: No problem. Can I follow up via email with more details?\n\nIf voicemail: Hi ${prospect.contact_name}, this is Sarah from Community Solar Solutions calling about potential energy savings for ${prospect.company_name}. We've identified approximately ${prospect.annual_savings.toLocaleString()} in annual savings opportunities. I'll send details via email, but feel free to call me back at 555-0100. Thanks!\n`;\n\nreturn [{\n  json: {\n    ...lead,\n    call_script: callScript,\n    call_to_number: lead.contacts?.[0]?.phone || '',\n    call_from_number: '+15550100',\n    contact_name: prospect.contact_name\n  }\n}];"
+      },
+      "id": "7cb336d8-eddf-469f-9089-0fb96114a465",
+      "name": "Prepare Voice Call Script",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2816,
+        560
+      ],
+      "notes": "📞 SCRIPT: Generate personalized voice call script for Vapi\n\nIncludes:\n- Company-specific details\n- Exact savings numbers\n- Natural conversation flow\n- Voicemail fallback"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.vapi.ai/call",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "vapiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$credentials.apiKey}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "phoneNumberId",
+              "value": "ph_xxxxxxxxxxxxx"
+            },
+            {
+              "name": "customer",
+              "value": "={{ {\n  number: $json.call_to_number,\n  name: $json.contact_name\n} }}"
+            },
+            {
+              "name": "assistant",
+              "value": "={{ {\n  firstMessage: $json.call_script,\n  model: {\n    provider: 'openai',\n    model: 'gpt-3.5-turbo',\n    temperature: 0.7\n  },\n  voice: {\n    provider: 'elevenlabs',\n    voiceId: 'sarah'\n  }\n} }}"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ {\n  company_id: $json.id,\n  company_name: $json.company_name,\n  annual_savings: $json.annual_savings\n} }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e73d6c54-8bdd-4a5a-a6e2-3b4ebb57b084",
+      "name": "Create Vapi Voice Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2592,
+        560
+      ],
+      "notes": "☎️ VAPI: Initiate outbound AI voice call\n\nMOCK ENDPOINT - Replace with actual Vapi credentials\n\nConfigures:\n- Phone numbers\n- AI assistant with custom script\n- Voice settings\n- Metadata for tracking"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Solar CRM"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblCompanies",
+          "mode": "list",
+          "cachedResultName": "Companies"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Last Outreach Date": "={{ $now.toISO() }}",
+            "Voice Call Initiated": true,
+            "Vapi Call ID": "={{ $json.id }}",
+            "Call Status": "initiated"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "ebc66a92-cdfc-4eb9-a866-2a721d50ba1e",
+      "name": "Update Call Status in Airtable",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        -2384,
+        560
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "m6AhaFH7ZxyeJ8mg",
+          "name": "Airtable Personal Access Token DGTLBase"
+        }
+      },
+      "notes": "✅ UPDATE: Log voice call initiation with Vapi call ID for tracking"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vapi-webhook",
+        "options": {}
+      },
+      "id": "68b65939-ef89-4361-9f85-49028e98bc8f",
+      "name": "Vapi Call Events Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -3216,
+        976
+      ],
+      "webhookId": "vapi-call-events",
+      "notes": "🎧 WEBHOOK: Listens for Vapi call events\n\nEvents:\n- call.started\n- call.ended\n- call.answered\n- call.voicemail\n- call.intent_detected\n\nURL: https://your-n8n.app/webhook/vapi-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Vapi webhook event\nconst event = $input.first().json;\n\nconst eventType = event.type;\nconst callId = event.call?.id;\nconst companyId = event.call?.metadata?.company_id;\nconst callStatus = event.call?.status;\nconst duration = event.call?.duration;\nconst intent = event.call?.analysis?.intent; // positive, negative, neutral\nconst transcript = event.call?.transcript;\n\nlet statusUpdate = 'Contacted';\nlet notes = '';\n\nswitch(eventType) {\n  case 'call.answered':\n    statusUpdate = 'Contacted - Call Answered';\n    notes = 'Call answered, conversation in progress';\n    break;\n  case 'call.voicemail':\n    statusUpdate = 'Contacted - Voicemail';\n    notes = 'Voicemail left';\n    break;\n  case 'call.ended':\n    if (intent === 'positive') {\n      statusUpdate = 'Interested';\n      notes = `Call completed. Positive intent detected. Duration: ${duration}s`;\n    } else if (intent === 'negative') {\n      statusUpdate = 'Not Interested';\n      notes = `Call completed. Not interested. Duration: ${duration}s`;\n    } else {\n      statusUpdate = 'Contacted';\n      notes = `Call completed. Neutral response. Duration: ${duration}s`;\n    }\n    break;\n}\n\nreturn [{\n  json: {\n    company_id: companyId,\n    call_id: callId,\n    event_type: eventType,\n    status_update: statusUpdate,\n    call_duration: duration,\n    call_intent: intent,\n    call_notes: notes,\n    call_transcript: transcript,\n    processed_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "fbe8d315-7c9f-4ceb-bf14-dc10cfda6cb4",
+      "name": "Process Vapi Call Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2992,
+        976
+      ],
+      "notes": "🔍 PROCESS: Parse Vapi webhook events and extract call outcomes\n\nDetermines:\n- Call status (answered, voicemail, completed)\n- Intent (positive, negative, neutral)\n- Next action needed"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Solar CRM"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblCompanies",
+          "mode": "list",
+          "cachedResultName": "Companies"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "={{ $json.status_update }}",
+            "Call Status": "={{ $json.event_type }}",
+            "Call Duration": "={{ $json.call_duration }}",
+            "Call Intent": "={{ $json.call_intent }}",
+            "Call Notes": "={{ $json.call_notes }}",
+            "Last Activity": "={{ $json.processed_at }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "9f1e09c0-666f-4b81-a237-8d02aa696d39",
+      "name": "Update Call Outcome in Airtable",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        -2784,
+        976
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "m6AhaFH7ZxyeJ8mg",
+          "name": "Airtable Personal Access Token DGTLBase"
+        }
+      },
+      "notes": "📝 UPDATE: Record call outcome and intent in Airtable"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.call_intent }}",
+              "rightValue": "positive",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e1d9358c-df1f-4fab-838f-2d385b49d6a7",
+      "name": "IF Positive Intent?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -2560,
+        976
+      ],
+      "notes": "⚡ BRANCH: If prospect showed interest, send Calendly booking link"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.calendly.com/scheduling_links",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "calendlyApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$credentials.apiKey}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "max_event_count",
+              "value": "1"
+            },
+            {
+              "name": "owner",
+              "value": "https://api.calendly.com/users/XXXXXX"
+            },
+            {
+              "name": "owner_type",
+              "value": "EventType"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "dee666d3-b7c3-4bfc-b04d-b54e16c4ec5c",
+      "name": "Generate Calendly Booking Link",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2336,
+        880
+      ],
+      "credentials": {
+        "calendlyApi": {
+          "id": "AJ0FLArfqD2Q8hj6",
+          "name": "Calendly account"
+        }
+      },
+      "notes": "📅 CALENDLY: Create unique booking link for prospect\n\nMOCK ENDPOINT - Replace with actual Calendly credentials"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "base": {
+          "__rl": true,
+          "value": "appXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Solar CRM"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblContacts",
+          "mode": "list",
+          "cachedResultName": "Contacts"
+        }
+      },
+      "id": "da15e7bd-c17d-4c1b-adb3-937270a6c5e5",
+      "name": "Get Contact Info",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        -2112,
+        880
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "m6AhaFH7ZxyeJ8mg",
+          "name": "Airtable Personal Access Token DGTLBase"
+        }
+      },
+      "notes": "👤 LOOKUP: Fetch contact email for sending Calendly link"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.Email }}",
+        "subject": "Schedule Your Solar Savings Consultation",
+        "message": "={{ `Hi ${$json.Name},\n\nThank you for your interest in community solar! Based on our conversation, I'm excited to show you how we can help save approximately ${$('Process Vapi Call Event').item.json.annual_savings?.toLocaleString() || 'significant amounts'} annually on energy costs.\n\nPlease use this link to schedule a 15-minute consultation at your convenience:\n\n${$('Generate Calendly Booking Link').item.json.booking_url}\n\nI look forward to speaking with you!\n\nBest regards,\nSarah\nCommunity Solar Solutions\n555-0100` }}",
+        "options": {
+          "replyTo": "sales@communitysolarprovider.com"
+        }
+      },
+      "id": "1b216425-3301-4e30-a752-5c5e51e22f5b",
+      "name": "Send Calendly Link via Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -1904,
+        880
+      ],
+      "webhookId": "f1cfd258-dcbb-458b-a2ac-899e906dd8fb",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ftMJ19DZtqaMtMKR",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "📧 SEND: Email Calendly booking link to interested prospect"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Solar CRM"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblCompanies",
+          "mode": "list",
+          "cachedResultName": "Companies"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Calendly Sent",
+            "Calendly Link": "={{ $('Generate Calendly Booking Link').item.json.booking_url }}",
+            "Calendly Sent Date": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "ddbd707b-cae5-4f6f-9ad1-cf678a12fc40",
+      "name": "Update Calendly Sent Status",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        -1680,
+        880
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "m6AhaFH7ZxyeJ8mg",
+          "name": "Airtable Personal Access Token DGTLBase"
+        }
+      },
+      "notes": "✅ UPDATE: Mark that Calendly link was sent to prospect"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "calendly-webhook",
+        "options": {}
+      },
+      "id": "7a0cb8e7-ad36-4a9c-8ccd-41c4958c60f3",
+      "name": "Calendly Booking Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1440,
+        400
+      ],
+      "webhookId": "calendly-booking",
+      "notes": "📅 WEBHOOK: Listens for Calendly booking events\n\nEvents:\n- invitee.created (booking confirmed)\n- invitee.canceled (booking canceled)\n\nURL: https://your-n8n.app/webhook/calendly-webhook\n\nConfigure in Calendly webhook settings"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Calendly booking webhook\nconst event = $input.first().json;\n\nconst eventType = event.event;\nconst invitee = event.payload?.invitee;\nconst scheduledEvent = event.payload?.scheduled_event;\n\nconst inviteeEmail = invitee?.email;\nconst inviteeName = invitee?.name;\nconst eventStartTime = scheduledEvent?.start_time;\nconst eventEndTime = scheduledEvent?.end_time;\nconst eventUri = scheduledEvent?.uri;\nconst cancelUrl = invitee?.cancel_url;\nconst rescheduleUrl = invitee?.reschedule_url;\n\nreturn [{\n  json: {\n    event_type: eventType,\n    invitee_email: inviteeEmail,\n    invitee_name: inviteeName,\n    meeting_start: eventStartTime,\n    meeting_end: eventEndTime,\n    meeting_uri: eventUri,\n    cancel_url: cancelUrl,\n    reschedule_url: rescheduleUrl,\n    processed_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "fb72a7ca-fff5-4263-aeaf-75b6ca9f0791",
+      "name": "Process Calendly Booking",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1216,
+        400
+      ],
+      "notes": "📋 PROCESS: Extract booking details from Calendly webhook"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Solar CRM"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblContacts",
+          "mode": "list",
+          "cachedResultName": "Contacts"
+        },
+        "filterByFormula": "={Email}='{{ $json.invitee_email }}'",
+        "options": {}
+      },
+      "id": "c1261247-5dff-46dc-8d77-5e155ea6611d",
+      "name": "Find Contact by Email",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        -1008,
+        400
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "m6AhaFH7ZxyeJ8mg",
+          "name": "Airtable Personal Access Token DGTLBase"
+        }
+      },
+      "notes": "🔍 LOOKUP: Find contact record by email to link booking"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Solar CRM"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblDeals",
+          "mode": "list",
+          "cachedResultName": "Deals"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Company": [
+              "={{ $json.Company?.[0] }}"
+            ],
+            "Stage": "Appointment Set",
+            "Meeting Date": "={{ $('Process Calendly Booking').item.json.meeting_start }}",
+            "Meeting End": "={{ $('Process Calendly Booking').item.json.meeting_end }}",
+            "Calendly URI": "={{ $('Process Calendly Booking').item.json.meeting_uri }}",
+            "Forecast Probability": "30",
+            "Assigned Rep": "Sarah Johnson",
+            "Created Date": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "a5de3b2f-9480-4149-8bc9-372252739116",
+      "name": "Create Deal Record",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        -784,
+        400
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "m6AhaFH7ZxyeJ8mg",
+          "name": "Airtable Personal Access Token DGTLBase"
+        }
+      },
+      "notes": "💼 CREATE: New deal record for booked appointment"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Solar CRM"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblCompanies",
+          "mode": "list",
+          "cachedResultName": "Companies"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Appointment Set",
+            "Meeting Scheduled": true,
+            "Meeting Date": "={{ $('Process Calendly Booking').item.json.meeting_start }}",
+            "Last Activity": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "90648c61-5464-4d74-aa07-e6628382a41e",
+      "name": "Update Appointment Status",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        -1424,
+        608
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "m6AhaFH7ZxyeJ8mg",
+          "name": "Airtable Personal Access Token DGTLBase"
+        }
+      },
+      "notes": "🎯 UPDATE: Mark company status as Appointment Set"
+    },
+    {
+      "parameters": {
+        "sendTo": "sales@communitysolarprovider.com",
+        "subject": "🎉 New Appointment Booked - {{ $('Process Calendly Booking').item.json.invitee_name }}",
+        "message": "={{ `New appointment has been booked!\n\nProspect: ${$('Process Calendly Booking').item.json.invitee_name}\nEmail: ${$('Process Calendly Booking').item.json.invitee_email}\nMeeting Time: ${$('Process Calendly Booking').item.json.meeting_start}\n\nCompany Details:\nName: ${$json['Company Name']}\nAnnual Savings: ${$json['Annual Savings']?.toLocaleString()}\n\nAction Required:\n1. Review company profile in Airtable\n2. Prepare presentation with savings calculations\n3. Add meeting to your calendar\n\nCalendly Link: ${$('Process Calendly Booking').item.json.meeting_uri}\n\nGood luck with the call!` }}",
+        "options": {}
+      },
+      "id": "6abf47ec-5397-4c9a-b7a2-bf42caa4d51d",
+      "name": "Notify Team of Appointment",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -1216,
+        608
+      ],
+      "webhookId": "43849b80-c141-465f-abe0-e93e4b94d4da",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ftMJ19DZtqaMtMKR",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "📬 NOTIFY: Alert sales team of new booked appointment"
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "aifirstlink@gmail.com",
+          "mode": "list",
+          "cachedResultName": "aifirstlink@gmail.com"
+        },
+        "start": "={{ $('Process Calendly Booking').item.json.meeting_start }}",
+        "end": "={{ $('Process Calendly Booking').item.json.meeting_end }}",
+        "additionalFields": {
+          "attendees": [
+            "={{ $('Process Calendly Booking').item.json.invitee_email }}"
+          ],
+          "description": "={{ `Community Solar Consultation\n\nProspect: ${$('Process Calendly Booking').item.json.invitee_name}\nEmail: ${$('Process Calendly Booking').item.json.invitee_email}\n\nCompany: ${$json['Company Name']}\nEstimated Annual Savings: ${$json['Annual Savings']?.toLocaleString()}\n\nPreparation:\n- Review Airtable company profile\n- Have savings calculator ready\n- Discuss community solar benefits (no upfront costs, 93% offset, 10% savings)\n\nCalendly: ${$('Process Calendly Booking').item.json.meeting_uri}` }}",
+          "sendUpdates": "all"
+        }
+      },
+      "id": "fec7ee12-78ef-4559-a58a-f78fff0e339c",
+      "name": "Create Google Calendar Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.2,
+      "position": [
+        -1008,
+        624
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "4fUHwW2iNUIwwKP2",
+          "name": "Google Calendar account"
+        }
+      },
+      "notes": "📆 CALENDAR: Add meeting to Google Calendar with all context"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Solar CRM"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblCompanies",
+          "mode": "list",
+          "cachedResultName": "Companies"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Rejected",
+            "Rejection Reason": "={{ $json.rejection_reason }}",
+            "Last Activity": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "9a4a5f86-78d1-43a8-a63e-0b0df694c373",
+      "name": "Write Rejected Lead to Airtable",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        -1200,
+        -384
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "m6AhaFH7ZxyeJ8mg",
+          "name": "Airtable Personal Access Token DGTLBase"
+        }
+      },
+      "notes": "❌ REJECTED: Log ineligible leads with rejection reason for future reference"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Solar CRM"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblErrorLogs",
+          "mode": "list",
+          "cachedResultName": "Error Logs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Workflow Name": "Community Solar Lead Pipeline",
+            "Node Name": "={{ $node['Fetch New Leads from Clay'].json.error?.node || 'Unknown' }}",
+            "Error Message": "={{ $json.message }}",
+            "Error Stack": "={{ $json.stack }}",
+            "Input Data": "={{ JSON.stringify($json.input) }}",
+            "Timestamp": "={{ $now.toISO() }}",
+            "Status": "New"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "59b2c2c1-2f1f-4c36-ade6-9a4b72276e68",
+      "name": "Log Error to Airtable",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        -1200,
+        1024
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "m6AhaFH7ZxyeJ8mg",
+          "name": "Airtable Personal Access Token DGTLBase"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "notes": "⚠️ ERROR LOG: Record all workflow errors in Airtable for troubleshooting"
+    },
+    {
+      "parameters": {
+        "sendTo": "errors@communitysolarprovider.com",
+        "subject": "⚠️ n8n Workflow Error - Community Solar Pipeline",
+        "message": "={{ `Workflow Error Alert\n\nWorkflow: Community Solar Lead Pipeline\nNode: ${$json['Node Name'] || 'Unknown'}\nTimestamp: ${$json.Timestamp}\n\nError Message:\n${$json['Error Message']}\n\nInput Data:\n${$json['Input Data']}\n\nPlease investigate in n8n and Airtable Error Logs table.\n\nError Log ID: ${$json.id}` }}",
+        "options": {}
+      },
+      "id": "d8881dbe-ff1e-466a-a8d4-efb7f990a7bd",
+      "name": "Send Error Alert Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -992,
+        1024
+      ],
+      "webhookId": "4d7d3b3a-88c8-4f30-8565-f11e2d2578d9",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ftMJ19DZtqaMtMKR",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "📧 ALERT: Email notification for workflow errors"
+    },
+    {
+      "parameters": {},
+      "id": "03b3af59-fb2c-40f4-8162-b7615d5fafc1",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1424,
+        1024
+      ],
+      "notes": "🚨 ERROR HANDLER: Catches all workflow errors for logging and alerting"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "workflow_summary",
+              "name": "workflow_summary",
+              "type": "object",
+              "value": "={{ {\n  total_leads_processed: $('Split into Individual Leads').all().length,\n  qualified_leads: $('IF Qualified for Outreach?').all().filter(item => item.json.qualified === true).length,\n  rejected_leads: $('IF Eligible?').all().filter(item => item.json.eligible === false).length,\n  emails_sent: $('Send Email via Gmail').all().length,\n  calls_initiated: $('Create Vapi Voice Call').all().length,\n  appointments_set: 0,\n  total_savings_pipeline: $('Calculate Solar Savings').all().reduce((sum, item) => sum + (item.json.annual_savings || 0), 0),\n  run_timestamp: $now.toISO()\n} }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "370ca3c8-8410-4c6d-9117-7c02ab31a326",
+      "name": "Generate Workflow Run Summary",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1936,
+        448
+      ],
+      "notes": "📊 SUMMARY: Compile workflow execution statistics and KPIs"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appXXXXXXXXXXXXXX",
+          "mode": "list",
+          "cachedResultName": "Solar CRM"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblWorkflowLogs",
+          "mode": "list",
+          "cachedResultName": "Workflow Logs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Workflow Name": "Community Solar Lead Pipeline",
+            "Run Timestamp": "={{ $json.workflow_summary.run_timestamp }}",
+            "Total Leads": "={{ $json.workflow_summary.total_leads_processed }}",
+            "Qualified Leads": "={{ $json.workflow_summary.qualified_leads }}",
+            "Rejected Leads": "={{ $json.workflow_summary.rejected_leads }}",
+            "Emails Sent": "={{ $json.workflow_summary.emails_sent }}",
+            "Calls Initiated": "={{ $json.workflow_summary.calls_initiated }}",
+            "Appointments Set": "={{ $json.workflow_summary.appointments_set }}",
+            "Total Savings Pipeline": "={{ $json.workflow_summary.total_savings_pipeline }}",
+            "Status": "Completed"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "d0455279-6f2a-4769-b364-21418289020f",
+      "name": "Log Workflow Run to Airtable",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        -1712,
+        448
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "m6AhaFH7ZxyeJ8mg",
+          "name": "Airtable Personal Access Token DGTLBase"
+        }
+      },
+      "notes": "📝 LOG: Record workflow execution metrics for dashboard reporting"
+    },
+    {
+      "parameters": {
+        "content": "# Full-Featured Workflow Components:\n\n# ⏰ Scheduled Trigger → HTTP fetch from Clay\n# 🔍 Data Enrichment → Clay API with fallback heuristics\n# 📊 Square Footage Logic → Industry-based defaults + manual review flag\n# ✅ Utility Validation → Check against Airtable eligible list\n# 🧮 Savings Calculator → Complete formula implementation\n# 💾 Airtable Integration → Upsert to Companies, Contacts, Deals tables\n# 🤖 AI Email Generation → OpenAI personalized outreach\n# 📧 Email Send → Gmail with savings details\n# 📞 Voice Outreach → Vapi.ai call creation\n# 📅 Calendly Booking → Webhook listener + calendar sync\n# ⚠️ Error Handling → Retry logic + email alerts + Airtable logging\n# 📈 Status Updates → Pipeline stage tracking",
+        "height": 800,
+        "width": 1264,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -4336,
+        -608
+      ],
+      "typeVersion": 1,
+      "id": "6cd9f9f8-eeaf-4533-af73-7958971ec88c",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "#  Clay → Enrich",
+        "height": 416,
+        "width": 2032,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3024,
+        -608
+      ],
+      "typeVersion": 1,
+      "id": "f45370a9-688b-41e4-b357-d0e495b20381",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "#  Calculate Savings → Airtable ",
+        "height": 416,
+        "width": 2032,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3024,
+        -160
+      ],
+      "typeVersion": 1,
+      "id": "8c195e35-4ddd-4215-bbbf-8277d47519dc",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "#  Outreach (Email + Voice)",
+        "height": 416,
+        "width": 1968,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3472,
+        320
+      ],
+      "typeVersion": 1,
+      "id": "60ceba89-e00f-49dc-a8b7-3365af193c77",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "#  Voice outreach via Vapi.ai",
+        "height": 368,
+        "width": 1984,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3472,
+        800
+      ],
+      "typeVersion": 1,
+      "id": "fcb8da2b-c549-4766-aaaa-f6dcb9d18f64",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "content": "#  Calendly booking automation + Google Calendar",
+        "height": 496,
+        "width": 864,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1472,
+        320
+      ],
+      "typeVersion": 1,
+      "id": "e06ecee5-8547-41ca-af99-331719255e2c",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "content": "#  Comprehensive error handling (email + Airtable logs)",
+        "height": 288,
+        "width": 640,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1456,
+        880
+      ],
+      "typeVersion": 1,
+      "id": "36b732bd-9ced-4795-a797-c2ef5422d366",
+      "name": "Sticky Note6"
+    },
+    {
+      "parameters": {
+        "content": "# Savings Formula:\n\n## kWh Usage = Total SqFt × Usage Intensity Factor\n## Annual Energy Cost = kWh Usage × All-In-Rate\n## Annual Credits = kWh Usage × 93%\n## Customer Cost = Annual Credits × All-In-Rate × 90%\n## Annual Savings = Annual Energy Cost - Customer Cost\n## Savings % = (Annual Savings / Annual Energy Cost) × 100",
+        "height": 352,
+        "width": 688,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -4320,
+        224
+      ],
+      "typeVersion": 1,
+      "id": "1b99a464-02fe-4dbf-a3e9-46ef650eb997",
+      "name": "Sticky Note7"
+    },
+    {
+      "parameters": {
+        "content": "# Lead Scoring Criteria\n\n## Annual Savings > $10K      +30     High value\n## Annual Savings $5K-$10K    +20     Medium value\n## Annual Savings < $5K       +10     Low value\n## Email contact available    +20\n## Phone contact available    +20\n## Eligible utility           +20     Always added if passes filter\n## Manual review needed       -10     Heuristic sqft used",
+        "height": 384,
+        "width": 688,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -4320,
+        624
+      ],
+      "typeVersion": 1,
+      "id": "f7507237-f783-47d2-bbe7-d6562d876d0c",
+      "name": "Sticky Note8"
+    },
+    {
+      "parameters": {
+        "content": "# Community Solar Lead Generation & Outreach System",
+        "height": 96,
+        "width": 912
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -4336,
+        -736
+      ],
+      "typeVersion": 1,
+      "id": "928b3ec1-ec9e-49f4-b031-22b5a6757b90",
+      "name": "Sticky Note9"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule: Daily 9AM Weekdays": {
+      "main": [
+        [
+          {
+            "node": "Fetch New Leads from Clay",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch New Leads from Clay": {
+      "main": [
+        [
+          {
+            "node": "Split into Individual Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split into Individual Leads": {
+      "main": [
+        [
+          {
+            "node": "Apply Square Footage Heuristics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply Square Footage Heuristics": {
+      "main": [
+        [
+          {
+            "node": "Get Eligible Utility Providers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Eligible Utility Providers": {
+      "main": [
+        [
+          {
+            "node": "Validate Utility Eligibility",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Utility Eligibility": {
+      "main": [
+        [
+          {
+            "node": "IF Eligible?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Eligible?": {
+      "main": [
+        [
+          {
+            "node": "Get Usage Intensity Factors",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Write Rejected Lead to Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Usage Intensity Factors": {
+      "main": [
+        [
+          {
+            "node": "Calculate Solar Savings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Solar Savings": {
+      "main": [
+        [
+          {
+            "node": "Score & Qualify Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score & Qualify Lead": {
+      "main": [
+        [
+          {
+            "node": "Search Existing Company",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Existing Company": {
+      "main": [
+        [
+          {
+            "node": "IF Company Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Company Exists?": {
+      "main": [
+        [
+          {
+            "node": "Update Company Record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Company Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Company Record": {
+      "main": [
+        [
+          {
+            "node": "Merge Company Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Company Record": {
+      "main": [
+        [
+          {
+            "node": "Merge Company Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Company Results": {
+      "main": [
+        [
+          {
+            "node": "Prepare Contact Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Contact Records": {
+      "main": [
+        [
+          {
+            "node": "Create Contact Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Contact Records": {
+      "main": [
+        [
+          {
+            "node": "IF Qualified for Outreach?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Qualified for Outreach?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Outreach Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Outreach Data": {
+      "main": [
+        [
+          {
+            "node": "Generate Personalized Email (OpenAI)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Voice Call Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Personalized Email (OpenAI)": {
+      "main": [
+        [
+          {
+            "node": "Parse Email Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Email Content": {
+      "main": [
+        [
+          {
+            "node": "Send Email via Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email via Gmail": {
+      "main": [
+        [
+          {
+            "node": "Update Email Status in Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Email Status in Airtable": {
+      "main": [
+        [
+          {
+            "node": "Generate Workflow Run Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Voice Call Script": {
+      "main": [
+        [
+          {
+            "node": "Create Vapi Voice Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Vapi Voice Call": {
+      "main": [
+        [
+          {
+            "node": "Update Call Status in Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vapi Call Events Webhook": {
+      "main": [
+        [
+          {
+            "node": "Process Vapi Call Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Vapi Call Event": {
+      "main": [
+        [
+          {
+            "node": "Update Call Outcome in Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Call Outcome in Airtable": {
+      "main": [
+        [
+          {
+            "node": "IF Positive Intent?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Positive Intent?": {
+      "main": [
+        [
+          {
+            "node": "Generate Calendly Booking Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Calendly Booking Link": {
+      "main": [
+        [
+          {
+            "node": "Get Contact Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Contact Info": {
+      "main": [
+        [
+          {
+            "node": "Send Calendly Link via Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Calendly Link via Email": {
+      "main": [
+        [
+          {
+            "node": "Update Calendly Sent Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calendly Booking Webhook": {
+      "main": [
+        [
+          {
+            "node": "Process Calendly Booking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Calendly Booking": {
+      "main": [
+        [
+          {
+            "node": "Find Contact by Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Contact by Email": {
+      "main": [
+        [
+          {
+            "node": "Create Deal Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Deal Record": {
+      "main": [
+        [
+          {
+            "node": "Update Appointment Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Appointment Status": {
+      "main": [
+        [
+          {
+            "node": "Notify Team of Appointment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Team of Appointment": {
+      "main": [
+        [
+          {
+            "node": "Create Google Calendar Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Log Error to Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Error to Airtable": {
+      "main": [
+        [
+          {
+            "node": "Send Error Alert Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Workflow Run Summary": {
+      "main": [
+        [
+          {
+            "node": "Log Workflow Run to Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "61e132a0-eb47-4d39-97f9-9decdc34218c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "563081422b97a9613202fc9e330444d764a4b838aee8c810ae24b64e312e87c7"
+  },
+  "id": "hmU28HJCSVw846Vo",
+  "tags": []
+}
