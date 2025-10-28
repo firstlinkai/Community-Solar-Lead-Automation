@@ -486,8 +486,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 > *"The personalized emails have a 45% open rate and 12% response rate—far better than our old generic templates."*  
 > — Business Development Manager, Boston
 
-*(Add your success story by submitting a PR!)*
-
 ---
 
 <div align="center">
@@ -496,6 +494,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 Made with ❤️ by the solar automation community
 
-[Report Bug](https://github.com/yourusername/solar-lead-automation/issues) · [Request Feature](https://github.com/yourusername/solar-lead-automation/issues) · [Documentation](docs/)
+[Report Bug](https://github.com/firstlinkai/solar-lead-automation/issues) · [Request Feature](https://github.com/firstlinkai/solar-lead-automation/issues) · [Documentation](docs/)
 
 </div>
