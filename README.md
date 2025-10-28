@@ -1,5 +1,3 @@
-# Community-Solar-Lead-Automation
-
 # Community Solar Lead Automation Workflow
 
 > **Intelligent lead enrichment, qualification, and outreach automation for community solar providers**
