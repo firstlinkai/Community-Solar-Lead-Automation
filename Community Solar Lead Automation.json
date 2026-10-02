@@ -1238,9 +1238,9 @@
       "parameters": {
         "calendar": {
           "__rl": true,
-          "value": "aifirstlink@gmail.com",
+          "value": "your-google-account@gmail.com",
           "mode": "list",
-          "cachedResultName": "aifirstlink@gmail.com"
+          "cachedResultName": "your-google-account@gmail.com"
         },
         "start": "={{ $('Process Calendly Booking').item.json.meeting_start }}",
         "end": "={{ $('Process Calendly Booking').item.json.meeting_end }}",
